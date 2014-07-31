@@ -19,7 +19,7 @@ class YellowWebinterface
 	{
 		$this->yellow = $yellow;
 		$this->yellow->config->setDefault("webinterfaceLocation", "/edit/");
-		$this->yellow->config->setDefault("webinterfaceServerScheme", "https");
+		$this->yellow->config->setDefault("webinterfaceServerScheme", "http");
 		$this->yellow->config->setDefault("webinterfaceServerName", $this->yellow->config->get("serverName"));
 		$this->yellow->config->setDefault("webinterfaceUserHashAlgorithm", "bcrypt");
 		$this->yellow->config->setDefault("webinterfaceUserHashCost", "10");
