@@ -1013,6 +1013,15 @@ class YellowConfig
 			}
 		}
 	}
+
+	function save($fileName)
+	{
+		$handle = fopen($fileName, "w");
+		foreach ($this->config as $key => $value) {
+			fwrite($handle, $key." = ".$value."\r\n");
+		}
+		fclose($handle);
+	}
 	
 	// Set default configuration
 	function setDefault($key, $value)

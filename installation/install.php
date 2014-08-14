@@ -2,6 +2,27 @@
 
 	require_once("../system/core/core.php");
 
+	if(isset($_POST) && !empty($_POST["serverName"]))
+	{
+		echo "Form Submitted";
+		$config = new YellowConfig($config);
+		$config->setDefault("configDir", "system/config/");
+		$config->setDefault("configFile", "config.ini");
+		$config->load("../".$config->get("configDir").$config->get("configFile"));
+		
+		// Set config.ini variables
+		$config->set("sitename", $_POST["sitename"]);
+		$config->set("author", $_POST["author"]);
+		$config->set("serverName", $_POST["serverName"]);
+		$config->set("webinterfaceServerScheme", $_POST["webinterfaceServerScheme"]);
+		$config->set("serverScheme", $_POST["webinterfaceServerScheme"]);
+		// var_dump($config->config);
+		// echo "<hr>";
+		// var_dump($_POST);
+		$config->save("../".$config->get("configDir").$config->get("configFile"));
+	}
+
+
 ?>
 
 <!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" lang="en">
@@ -23,27 +44,27 @@
 		<div class="header-banner"></div>
 		<div class="content">
 			<h1>Installation</h1>
-			<form class="pure-form pure-form-aligned">
+			<form class="pure-form pure-form-aligned" action="install.php" method="post">
 				<fieldset>
 					<div class="pure-control-group">
 						<label>Server Scheme:</label>
-						<input type="radio" name="ServerScheme" value="http" checked>&nbsp;http://&nbsp;&nbsp;&nbsp;<input type="radio" name="ServerScheme" value="https">&nbsp;https://
+						<input type="radio" name="webinterfaceServerScheme" value="http" <?php if($_POST["webinterfaceServerScheme"] != "https"){echo "checked";} ?>>&nbsp;http://&nbsp;&nbsp;&nbsp;<input type="radio" name="webinterfaceServerScheme" value="https" <?php if($_POST["webinterfaceServerScheme"] == "https"){echo "checked";} ?>>&nbsp;https://
 					</div>
 					<div class="pure-control-group">
-						<label for="ServerName">Server Name:</label>
-						<input type="text" name="ServerName">
+						<label for="serverName">Server Name:</label>
+						<input type="text" name="serverName" value="<?php echo $_POST["serverName"]; ?>">
 					</div>
 					<div class="pure-control-group">
 						<label for="sitename">Site Name:</label>
-						<input type="text" name="sitename">
+						<input type="text" name="sitename" value="<?php echo $_POST["sitename"]; ?>">
 					</div>
 					<div class="pure-control-group">
 						<label for="author">Author:</label>
-						<input type="text" name="author">
+						<input type="text" name="author" value="<?php echo $_POST["author"]; ?>">
 					</div>
 					<div class="pure-control-group">
 						<label for="email">Email:</label>
-						<input type="text" name="email">
+						<input type="text" name="email" value="<?php echo $_POST["email"]; ?>">
 					</div>
 					<div class="pure-control-group">
 						<label for="password">Password:</label>
@@ -66,3 +87,4 @@
 	</div>
 </body>
 </html>
+
