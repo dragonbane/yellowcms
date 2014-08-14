@@ -1021,7 +1021,6 @@ class YellowConfig
 			fwrite($handle, $key." = ".$value."\r\n");
 		}
 		fclose($handle);
-		header("Location: /");
 	}
 	
 	// Set default configuration

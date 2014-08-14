@@ -5,9 +5,13 @@
 require_once("system/core/core.php");
 if(PHP_SAPI != "cli")
 {
-	$yellow = new Yellow();
-	$yellow->plugins->load();
-	$yellow->request();
+	if(file_exists(installation)){
+		header("Location: /installation/install.php");
+	} else {
+		$yellow = new Yellow();
+		$yellow->plugins->load();
+		$yellow->request();
+	}
 } else {
 	$yellow = new Yellow();
 	$yellow->plugins->load();

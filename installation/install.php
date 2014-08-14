@@ -19,7 +19,10 @@
 		// var_dump($config->config);
 		// echo "<hr>";
 		// var_dump($_POST);
+
 		$config->save("../".$config->get("configDir").$config->get("configFile"));
+
+		header("Location: done.php");
 	}
 
 
