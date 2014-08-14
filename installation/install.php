@@ -53,6 +53,10 @@
 						<label for="confirmPassword">Confirm:</label>
 						<input type="text" name="confirmPassword">
 					</div>
+					<div class="pure-control-group">
+						<label>&nbsp;</label>
+						<input type="submit" value="Submit" class="pure-button">
+					</div>
 				</fieldset>
 			</form>
 		</div>
