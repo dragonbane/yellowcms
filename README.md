@@ -1,4 +1,4 @@
-Yellow 0.3.12
+Yellow 0.3.14
 =============
 Yellow is for people who make websites. [Visit website](http://datenstrom.se/yellow).
 
@@ -10,7 +10,7 @@ How do I install this?
 2. Copy all files to your web hosting.  
 3. Open your website in a browser.
 
-Installation requirements are Apache, mod_rewrite, mod_ssl, PHP 5.3+.  
+Installation requirements are Apache, mod_rewrite, PHP 5.3+.  
 Yellow doesn't come with a lot of stuff. [Download Yellow extensions](https://github.com/markseu/yellowcms-extensions). 
 
 How do I get started?
