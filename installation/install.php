@@ -4,27 +4,37 @@
 
 	if(isset($_POST) && !empty($_POST["serverName"]))
 	{
-		echo "Form Submitted";
 		$config = new YellowConfig($config);
 		$config->setDefault("configDir", "system/config/");
 		$config->setDefault("configFile", "config.ini");
+		$config->setDefault("webinterfaceUserFile", "user.ini");
 		$config->load("../".$config->get("configDir").$config->get("configFile"));
+		$fileName = "../".$config->get("configDir").$config->get("webinterfaceUserFile");
 		
-		// Set config.ini variables
-		$config->set("sitename", $_POST["sitename"]);
-		$config->set("author", $_POST["author"]);
-		$config->set("serverName", $_POST["serverName"]);
-		$config->set("webinterfaceServerScheme", $_POST["webinterfaceServerScheme"]);
-		$config->set("serverScheme", $_POST["webinterfaceServerScheme"]);
-		// var_dump($config->config);
-		// echo "<hr>";
-		// var_dump($_POST);
-
-		$config->save("../".$config->get("configDir").$config->get("configFile"));
-
-		header("Location: done.php");
+		// Run a  quick check to make sure the file is writable.
+		if(is_writable("../".$config->get("configDir").$config->get("configFile")) == true)
+		{
+			// Set config.ini variables
+			$config->set("sitename", $_POST["sitename"]);
+			$config->set("author", $_POST["author"]);
+			$config->set("serverName", $_POST["serverName"]);
+			$config->set("webinterfaceServerScheme", $_POST["webinterfaceServerScheme"]);
+			$config->set("serverScheme", $_POST["webinterfaceServerScheme"]);
+			$config->save("../".$config->get("configDir").$config->get("configFile"));
+		} else {
+			$_POST["error"] = "Config file is not writeable!";
+		}
+		
+		echo $filename;
+		$options = array("cost" => 11);
+		$user = array(
+			"name" 		=> $_POST["author"],
+			"email" 	=> $_POST["email"],
+			"hash"		=> password_hash($_POST["password"], PASSWORD_BCRYPT, $options),
+			"language" 	=> "en",
+			"home"		=> ""
+		);
 	}
-
 
 ?>
 
@@ -47,6 +57,7 @@
 		<div class="header-banner"></div>
 		<div class="content">
 			<h1>Installation</h1>
+			<div><?php echo $_POST["error"]; ?></div>
 			<form class="pure-form pure-form-aligned" action="install.php" method="post">
 				<fieldset>
 					<div class="pure-control-group">
