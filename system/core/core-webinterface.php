@@ -5,12 +5,13 @@
 // Web interface core plugin
 class YellowWebinterface
 {
-	const Version = "0.3.6";
+	const Version = "0.4.6";
 	var $yellow;				//access to API
-	var $users;					//web interface users
 	var $active;				//web interface is active? (boolean)
 	var $userLoginFailed;		//web interface login failed? (boolean)
 	var $userPermission;		//web interface can modify page? (boolean)
+	var $users;					//web interface users
+	var $merge;					//web interface merge
 	var $rawDataSource;			//raw data of page for comparison
 	var $rawDataEdit;			//raw data of page for editing
 
@@ -18,17 +19,15 @@ class YellowWebinterface
 	function onLoad($yellow)
 	{
 		$this->yellow = $yellow;
+		$this->users = new YellowWebinterfaceUsers($yellow);
+		$this->merge = new YellowWebinterfaceMerge($yellow);
 		$this->yellow->config->setDefault("webinterfaceLocation", "/edit/");
 		$this->yellow->config->setDefault("webinterfaceServerScheme", "http");
 		$this->yellow->config->setDefault("webinterfaceServerName", $this->yellow->config->get("serverName"));
 		$this->yellow->config->setDefault("webinterfaceUserHashAlgorithm", "bcrypt");
 		$this->yellow->config->setDefault("webinterfaceUserHashCost", "10");
 		$this->yellow->config->setDefault("webinterfaceUserFile", "user.ini");
-		$this->yellow->config->setDefault("webinterfaceDefaultEmail", "");
-		$this->yellow->config->setDefault("webinterfaceDefaultPassword", "");
-		$this->yellow->config->setDefault("webinterfaceNewPage", "default");
 		$this->yellow->config->setDefault("webinterfaceFilePrefix", "published");
-		$this->users = new YellowWebinterfaceUsers($yellow);
 		$this->users->load($this->yellow->config->get("configDir").$this->yellow->config->get("webinterfaceUserFile"));
 	}
 
@@ -48,7 +47,7 @@ class YellowWebinterface
 				$locationHeader = $this->yellow->toolbox->getLocationHeader(
 					$this->yellow->config->get("webinterfaceServerScheme"),
 					$this->yellow->config->get("webinterfaceServerName"), $base, $activeLocation);
-				$this->yellow->sendStatus($statusCode, $locationHeader);
+				$this->yellow->sendStatus($statusCode, false, $locationHeader);
 			}
 		}
 		return $statusCode;
@@ -97,16 +96,17 @@ class YellowWebinterface
 		if($this->isActive())
 		{
 			$location = $this->yellow->config->getHtml("serverBase").$this->yellow->config->getHtml("pluginLocation");
-			$header .= "<link rel=\"styleSheet\" type=\"text/css\" media=\"all\" href=\"{$location}core-webinterface.css\" />\n";
+			$header .= "<link rel=\"stylesheet\" type=\"text/css\" media=\"all\" href=\"{$location}core-webinterface.css\" />\n";
 			$header .= "<script type=\"text/javascript\" src=\"{$location}core-webinterface.js\"></script>\n";
 			$header .= "<script type=\"text/javascript\">\n";
 			$header .= "// <![CDATA[\n";
 			if($this->isUser())
 			{
-				$header .= "yellow.page.userPermission = " .json_encode($this->userPermission).";\n";
+				$header .= "yellow.page.userPermission = ".json_encode($this->userPermission).";\n";
 				$header .= "yellow.page.rawDataSource = ".json_encode($this->rawDataSource).";\n";
 				$header .= "yellow.page.rawDataEdit = ".json_encode($this->rawDataEdit).";\n";
 				$header .= "yellow.page.rawDataNew = ".json_encode($this->getDataNew()).";\n";
+				$header .= "yellow.page.parserSafeMode = ".json_encode($page->parserSafeMode).";\n";
 				$header .= "yellow.page.statusCode = ".json_encode($page->statusCode).";\n";
 			}
 			$header .= "yellow.config = ".json_encode($this->getDataConfig()).";\n";
@@ -184,7 +184,7 @@ class YellowWebinterface
 		if($statusCode == 0)
 		{
 			$statusCode = $this->userLoginFailed ? 401 : 0;
-			$statusCode = $this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+			$statusCode = $this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 		}
 		return $statusCode;
 	}
@@ -195,16 +195,16 @@ class YellowWebinterface
 		$statusCode = 0;
 		if(is_readable($fileName))
 		{
-			$statusCode = $this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, 0);
+			$statusCode = $this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, 0, false);
 		} else {
 			if($this->yellow->toolbox->isFileLocation($location) && $this->yellow->isContentDirectory("$location/"))
 			{
 				$statusCode = 301;
 				$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, "$location/");
-				$this->yellow->sendStatus($statusCode, $locationHeader);
+				$this->yellow->sendStatus($statusCode, false, $locationHeader);
 			} else {
 				$statusCode = $this->userPermission ? 424 : 404;
-				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 			}
 		}
 		return $statusCode;
@@ -216,23 +216,23 @@ class YellowWebinterface
 		$statusCode = 0;
 		if($this->userPermission && !empty($_POST["rawdataedit"]))
 		{
-			$this->rawDataSource = $this->rawDataEdit = stripcslashes($_POST["rawdatasource"]);
-			$page = $this->getPageNew($serverScheme, $serverName, $base, $location, $fileName, stripcslashes($_POST["rawdataedit"]));
+			$this->rawDataSource = $this->rawDataEdit = rawurldecode($_POST["rawdatasource"]);
+			$page = $this->getPageNew($serverScheme, $serverName, $base, $location, $fileName, rawurldecode($_POST["rawdataedit"]));
 			if(!$page->isError())
 			{
 				if($this->yellow->toolbox->createFile($page->fileName, $page->rawData))
 				{
 					$statusCode = 303;
 					$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, $page->location);
-					$this->yellow->sendStatus($statusCode, $locationHeader);
+					$this->yellow->sendStatus($statusCode, false, $locationHeader);
 				} else {
 					$statusCode = 500;
-					$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+					$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 					$this->yellow->page->error($statusCode, "Can't write file '$page->fileName'!");
 				}
 			} else {
 				$statusCode = 500;
-				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 				$this->yellow->page->error($statusCode, $page->get("pageError"));
 			}
 		}
@@ -245,9 +245,10 @@ class YellowWebinterface
 		$statusCode = 0;
 		if($this->userPermission && !empty($_POST["rawdataedit"]))
 		{
-			$this->rawDataSource = stripcslashes($_POST["rawdatasource"]);
-			$this->rawDataEdit = stripcslashes($_POST["rawdataedit"]);
-			$page = $this->getPageUpdate($serverScheme, $serverName, $base, $location, $fileName, $this->rawDataSource, $this->rawDataEdit);
+			$this->rawDataSource = rawurldecode($_POST["rawdatasource"]);
+			$this->rawDataEdit = rawurldecode($_POST["rawdataedit"]);
+			$page = $this->getPageUpdate($serverScheme, $serverName, $base, $location, $fileName,
+				$this->rawDataSource, $this->rawDataEdit, $this->yellow->toolbox->getFileData($fileName));
 			if(!$page->isError())
 			{
 				if($this->yellow->toolbox->renameFile($fileName, $page->fileName) &&
@@ -255,15 +256,15 @@ class YellowWebinterface
 				{
 					$statusCode = 303;
 					$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, $page->location);
-					$this->yellow->sendStatus($statusCode, $locationHeader);
+					$this->yellow->sendStatus($statusCode, false, $locationHeader);
 				} else {
 					$statusCode = 500;
-					$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+					$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 					$this->yellow->page->error($statusCode, "Can't write file '$page->fileName'!");
 				}
 			} else {
 				$statusCode = 500;
-				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 				$this->yellow->page->error($statusCode, $page->get("pageError"));
 			}
 		}
@@ -276,15 +277,15 @@ class YellowWebinterface
 		$statusCode = 0;
 		if($this->userPermission)
 		{
-			$this->rawDataSource = $this->rawDataEdit = stripcslashes($_POST["rawdatasource"]);
+			$this->rawDataSource = $this->rawDataEdit = rawurldecode($_POST["rawdatasource"]);
 			if(!is_file($fileName) || $this->yellow->toolbox->deleteFile($fileName))
 			{
 				$statusCode = 303;
 				$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, $location);
-				$this->yellow->sendStatus($statusCode, $locationHeader);
+				$this->yellow->sendStatus($statusCode, false, $locationHeader);
 			} else {
 				$statusCode = 500;
-				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, false, $statusCode);
+				$this->yellow->processRequest($serverScheme, $serverName, $base, $location, $fileName, $statusCode, false);
 				$this->yellow->page->error($statusCode, "Can't delete file '$fileName'!");
 			}
 		}
@@ -300,11 +301,11 @@ class YellowWebinterface
 		{
 			$statusCode = 303;
 			$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, $location);
-			$this->yellow->sendStatus($statusCode, $locationHeader);
+			$this->yellow->sendStatus($statusCode, false, $locationHeader);
 		} else {
 			$statusCode = 302;
 			$locationHeader = $this->yellow->toolbox->getLocationHeader($serverScheme, $serverName, $base, $home);
-			$this->yellow->sendStatus($statusCode, $locationHeader);
+			$this->yellow->sendStatus($statusCode, false, $locationHeader);
 		}
 		return $statusCode;
 	}
@@ -319,34 +320,8 @@ class YellowWebinterface
 			$this->yellow->config->get("serverScheme"),
 			$this->yellow->config->get("serverName"),
 			$this->yellow->config->get("serverBase"), $location);
-		$this->yellow->sendStatus($statusCode, $locationHeader);
+		$this->yellow->sendStatus($statusCode, false, $locationHeader);
 		return $statusCode;
-	}
-	
-	// Merge text
-	function mergeText($location, $textSource, $textLocal, $fileName)
-	{
-		$fileHandle = @fopen($fileName, "r");
-		if($fileHandle)
-		{
-			$fileData = fread($fileHandle, filesize($fileName));
-			fclose($fileHandle);
-		}
-		if(!empty($fileData) && $fileData!=$textSource && $fileData!=$textLocal)
-		{
-			$output = NULL;
-			foreach($this->yellow->plugins->plugins as $key=>$value)
-			{
-				if(method_exists($value["obj"], "onMergeText"))
-				{
-					$output = $value["obj"]->onMergeText($location, $textSource, $textLocal, $fileData);
-					if(!is_null($output)) break;
-				}
-			}
-		} else {
-			$output = $textLocal;
-		}
-		return $output;
 	}
 
 	// Check web interface request
@@ -418,7 +393,7 @@ class YellowWebinterface
 	// Update page data with title
 	function updateDataTitle($rawData, $title)
 	{
-		foreach(preg_split("/([\r\n]+)/", $rawData, -1, PREG_SPLIT_DELIM_CAPTURE) as $line)
+		foreach($this->yellow->toolbox->getTextLines($rawData) as $line)
 		{
 			if(preg_match("/^(\s*Title\s*:\s*)(.*?)(\s*)$/i", $line, $matches)) $line = $matches[1].$title.$matches[3];
 			$rawDataNew .= $line;
@@ -430,12 +405,13 @@ class YellowWebinterface
 	function getPageNew($serverScheme, $serverName, $base, $location, $fileName, $rawData)
 	{
 		$page = new YellowPage($this->yellow, $serverScheme, $serverName, $base, $location, $fileName);
-		$page->parseData($rawData, false, 0);
+		$page->parseData($rawData, 0, false);
 		$page->fileName = $this->yellow->toolbox->findFileFromTitle(
 			$page->get($this->yellow->config->get("webinterfaceFilePrefix")), $page->get("title"), $fileName,
 			$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
-		$page->location = $this->yellow->toolbox->findLocationFromFile($page->fileName,
-			$this->yellow->config->get("contentDir"), $this->yellow->config->get("contentHomeDir"),
+		$page->location = $this->yellow->toolbox->findLocationFromFile(
+			$page->fileName, $this->yellow->config->get("contentDir"),
+			$this->yellow->config->get("contentRootDir"), $this->yellow->config->get("contentHomeDir"),
 			$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
 		if($this->yellow->pages->find($page->location))
 		{
@@ -449,8 +425,9 @@ class YellowWebinterface
 				$page->fileName = $this->yellow->toolbox->findFileFromTitle(
 					$page->get($this->yellow->config->get("webinterfaceFilePrefix")), $titleText.$titleNumber, $fileName,
 					$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
-				$page->location = $this->yellow->toolbox->findLocationFromFile($page->fileName,
-					$this->yellow->config->get("contentDir"), $this->yellow->config->get("contentHomeDir"),
+				$page->location = $this->yellow->toolbox->findLocationFromFile(
+					$page->fileName, $this->yellow->config->get("contentDir"),
+					$this->yellow->config->get("contentRootDir"), $this->yellow->config->get("contentHomeDir"),
 					$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
 				if(!$this->yellow->pages->find($page->location)) { $ok = true; break; }
 			}
@@ -461,23 +438,24 @@ class YellowWebinterface
 	}
 	
 	// Return modified page
-	function getPageUpdate($serverScheme, $serverName, $base, $location, $fileName, $rawDataSource, $rawDataEdit)
+	function getPageUpdate($serverScheme, $serverName, $base, $location, $fileName, $rawDataSource, $rawDataEdit, $rawDataFile)
 	{
 		$page = new YellowPage($this->yellow, $serverScheme, $serverName, $base, $location, $fileName);
-		$page->parseData($this->mergeText($location, $rawDataSource, $rawDataEdit, $fileName), false, 0);
+		$page->parseData($this->merge->merge($rawDataSource, $rawDataEdit, $rawDataFile), 0, false);
 		if(empty($page->rawData)) $page->error(500, "Page has been modified by someone else!");
 		if($this->yellow->toolbox->isFileLocation($location) && !$page->isError())
 		{
 			$pageSource = new YellowPage($this->yellow, $serverScheme, $serverName, $base, $location, $fileName);
-			$pageSource->parseData($rawDataSource, false, 0);
+			$pageSource->parseData($rawDataSource, 0, false);
 			$prefix = $this->yellow->config->get("webinterfaceFilePrefix");
 			if($pageSource->get($prefix)!=$page->get($prefix) || $pageSource->get("title")!=$page->get("title"))
 			{
 				$page->fileName = $this->yellow->toolbox->findFileFromTitle(
 					$page->get($prefix), $page->get("title"), $fileName,
 					$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
-				$page->location = $this->yellow->toolbox->findLocationFromFile($page->fileName,
-					$this->yellow->config->get("contentDir"), $this->yellow->config->get("contentHomeDir"),
+				$page->location = $this->yellow->toolbox->findLocationFromFile(
+					$page->fileName, $this->yellow->config->get("contentDir"),
+					$this->yellow->config->get("contentRootDir"), $this->yellow->config->get("contentHomeDir"),
 					$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
 				if($pageSource->location!=$page->location && $this->yellow->pages->find($page->location))
 				{
@@ -492,19 +470,18 @@ class YellowWebinterface
 	// Return content data for new page
 	function getDataNew($title = "")
 	{
-		$fileName = $this->yellow->toolbox->findFileFromLocation($this->yellow->page->location,
-			$this->yellow->config->get("contentDir"), $this->yellow->config->get("contentHomeDir"),
+		$fileName = $this->yellow->toolbox->findFileFromLocation(
+			$this->yellow->page->location, $this->yellow->config->get("contentDir"),
+			$this->yellow->config->get("contentRootDir"), $this->yellow->config->get("contentHomeDir"),
 			$this->yellow->config->get("contentDefaultFile"), $this->yellow->config->get("contentExtension"));
-		$fileName = $this->yellow->toolbox->findNameFromFile($fileName,
-			$this->yellow->config->get("configDir"), $this->yellow->config->get("webinterfaceNewPage"),
-			$this->yellow->config->get("contentExtension"), true);
-		$fileHandle = @fopen($fileName, "r");
-		if($fileHandle)
-		{
-			$fileData = fread($fileHandle, filesize($fileName));
-			if(!empty($title)) $fileData = $this->updateDataTitle($fileData, $title);
-			fclose($fileHandle);
-		}
+		$fileName = $this->yellow->toolbox->findFileNew($fileName,
+			$this->yellow->config->get("configDir"), $this->yellow->config->get("newPageFile"),
+			$this->yellow->config->get("contentDefaultFile"));
+		$fileData = $this->yellow->toolbox->getFileData($fileName);
+		$fileData = preg_replace("/@date/i", date("Y-m-d"), $fileData);
+		$fileData = preg_replace("/@username/i", $this->users->getName(), $fileData);
+		$fileData = preg_replace("/@userlanguage/i", $this->users->getLanguage(), $fileData);
+		if(!empty($title)) $fileData = $this->updateDataTitle($fileData, $title);
 		return $fileData;
 	}
 	
@@ -522,8 +499,8 @@ class YellowWebinterface
 			$data["serverName"] = $this->yellow->config->get("serverName");
 			$data["serverBase"] = $this->yellow->config->get("serverBase");
 		} else {
-			$data["webinterfaceDefaultEmail"] = $this->yellow->config->get("webinterfaceDefaultEmail");
-			$data["webinterfaceDefaultPassword"] = $this->yellow->config->get("webinterfaceDefaultPassword");
+			$data["loginEmail"] = $this->yellow->config->get("loginEmail");
+			$data["loginPassword"] = $this->yellow->config->get("loginPassword");
 		}
 		return $data;
 	}
@@ -687,6 +664,189 @@ class YellowWebinterfaceUsers
 	function isExisting($email)
 	{
 		return !is_null($this->users[$email]);
+	}
+}
+	
+// Yellow web interface merge
+class YellowWebinterfaceMerge
+{
+	var $yellow;		//access to API
+	const Add = '+';	//merge types
+	const Modify = '*';
+	const Remove = '-';
+	const Same = ' ';
+	
+	function __construct($yellow)
+	{
+		$this->yellow = $yellow;
+	}
+	
+	// Merge text, NULL if not possible
+	function merge($textSource, $textMine, $textYours, $showDiff = false)
+	{
+		if($textMine != $textYours)
+		{
+			$diffMine = $this->buildDiff($textSource, $textMine);
+			$diffYours = $this->buildDiff($textSource, $textYours);
+			$diff = $this->mergeDiff($diffMine, $diffYours);
+			$output = $this->getOutput($diff, $showDiff);
+		} else {
+			$output = $textMine;
+		}
+		return $output;
+	}
+	
+	// Build differences to common source
+	function buildDiff($textSource, $textOther)
+	{
+		$diff = array();
+		$lastRemove = -1;
+		$textStart = 0;
+		$textSource = $this->yellow->toolbox->getTextLines($textSource);
+		$textOther = $this->yellow->toolbox->getTextLines($textOther);
+		$sourceEnd = $sourceSize = count($textSource);
+		$otherEnd = $otherSize = count($textOther);
+		while($textStart<$sourceEnd && $textStart<$otherEnd && $textSource[$textStart]==$textOther[$textStart]) ++$textStart;
+		while($textStart<$sourceEnd && $textStart<$otherEnd && $textSource[$sourceEnd-1]==$textOther[$otherEnd-1])
+		{
+			--$sourceEnd; --$otherEnd;
+		}
+		for($pos=0; $pos<$textStart; ++$pos) array_push($diff, array(YellowWebinterfaceMerge::Same, $textSource[$pos], false));
+		$lcs = $this->buildDiffLCS($textSource, $textOther, $textStart, $sourceEnd-$textStart, $otherEnd-$textStart);
+		for($x=0,$y=0,$xEnd=$otherEnd-$textStart,$yEnd=$sourceEnd-$textStart; $x<$xEnd || $y<$yEnd;)
+		{
+			$max = $lcs[$y][$x];
+			if($y<$yEnd && $lcs[$y+1][$x]==$max)
+			{
+				array_push($diff, array(YellowWebinterfaceMerge::Remove, $textSource[$textStart+$y], false));
+				if($lastRemove == -1) $lastRemove = count($diff)-1;
+				++$y;
+				continue;
+			}
+			if($x<$xEnd && $lcs[$y][$x+1]==$max)
+			{
+				if($lastRemove==-1 || $diff[$lastRemove][0]!=YellowWebinterfaceMerge::Remove)
+				{
+					array_push($diff, array(YellowWebinterfaceMerge::Add, $textOther[$textStart+$x], false));
+					$lastRemove = -1;
+				} else {
+					$diff[$lastRemove] = array(YellowWebinterfaceMerge::Modify, $textOther[$textStart+$x], false);
+					++$lastRemove; if(count($diff)==$lastRemove) $lastRemove = -1;
+				}
+				++$x;
+				continue;
+			}
+			array_push($diff, array(YellowWebinterfaceMerge::Same, $textSource[$textStart+$y], false));
+			$lastRemove = -1;
+			++$x;
+			++$y;
+		}
+		for($pos=$sourceEnd;$pos<$sourceSize; ++$pos) array_push($diff, array(YellowWebinterfaceMerge::Same, $textSource[$pos], false));
+		return $diff;
+	}
+	
+	// Build longest common subsequence
+	function buildDiffLCS($textSource, $textOther, $textStart, $yEnd, $xEnd)
+	{
+		$lcs = array_fill(0, $yEnd+1, array_fill(0, $xEnd+1, 0));
+		for($y=$yEnd-1; $y>=0; --$y)
+		{
+			for($x=$xEnd-1; $x>=0; --$x)
+			{
+				if($textSource[$textStart+$y] == $textOther[$textStart+$x])
+				{
+					$lcs[$y][$x] = $lcs[$y+1][$x+1]+1;
+				} else {
+					$lcs[$y][$x] = max($lcs[$y][$x+1], $lcs[$y+1][$x]);
+				}
+			}
+		}
+		return $lcs;
+	}
+	
+	// Merge differences
+	function mergeDiff($diffMine, $diffYours)
+	{
+		$diff = array();
+		$posMine = $posYours = 0;
+		while($posMine<count($diffMine) && $posYours<count($diffYours))
+		{
+			$typeMine = $diffMine[$posMine][0];
+			$typeYours = $diffYours[$posYours][0];
+			if($typeMine==YellowWebinterfaceMerge::Same)
+			{
+				array_push($diff, $diffYours[$posYours]);
+			} else if($typeYours==YellowWebinterfaceMerge::Same) {
+				array_push($diff, $diffMine[$posMine]);
+			} else if($typeMine==YellowWebinterfaceMerge::Add && $typeYours==YellowWebinterfaceMerge::Add) {
+				$this->mergeConflict($diff, $diffMine[$posMine], $diffYours[$posYours], false);
+			} else if($typeMine==YellowWebinterfaceMerge::Modify && $typeYours==YellowWebinterfaceMerge::Modify) {
+				$this->mergeConflict($diff, $diffMine[$posMine], $diffYours[$posYours], false);
+			} else if($typeMine==YellowWebinterfaceMerge::Remove && $typeYours==YellowWebinterfaceMerge::Remove) {
+				array_push($diff, $diffMine[$posMine]);
+			} else if($typeMine==YellowWebinterfaceMerge::Add) {
+				array_push($diff, $diffMine[$posMine]);
+			} else if($typeYours==YellowWebinterfaceMerge::Add) {
+				array_push($diff, $diffYours[$posYours]);
+			} else {
+				$this->mergeConflict($diff, $diffMine[$posMine], $diffYours[$posYours], true);
+			}
+			if(defined("DEBUG") && DEBUG>=2) echo "YellowWebinterfaceMerge::mergeDiff $typeMine $typeYours pos:$posMine\t$posYours<br/>\n";
+			if($typeMine==YellowWebinterfaceMerge::Add || $typeYours==YellowWebinterfaceMerge::Add)
+			{
+				if($typeMine==YellowWebinterfaceMerge::Add) ++$posMine;
+				if($typeYours==YellowWebinterfaceMerge::Add) ++$posYours;
+			} else {
+				++$posMine;
+				++$posYours;
+			}
+		}
+		for(;$posMine<count($diffMine); ++$posMine)
+		{
+			array_push($diff, $diffMine[$posMine]);
+			$typeMine = $diffMine[$posMine][0]; $typeYours = ' ';
+			if(defined("DEBUG") && DEBUG>=2) echo "YellowWebinterfaceMerge::mergeDiff $typeMine $typeYours pos:$posMine\t$posYours<br/>\n";
+		}
+		for(;$posYours<count($diffYours); ++$posYours)
+		{
+			array_push($diff, $diffYours[$posYours]);
+			$typeYours = $diffYours[$posYours][0]; $typeMine = ' ';
+			if(defined("DEBUG") && DEBUG>=2) echo "YellowWebinterfaceMerge::mergeDiff $typeMine $typeYours pos:$posMine\t$posYours<br/>\n";
+		}
+		return $diff;
+	}
+	
+	// Merge potential conflict
+	function mergeConflict(&$diff, $diffMine, $diffYours, $conflict)
+	{
+		if(!$conflict && $diffMine[1]==$diffYours[1])
+		{
+			array_push($diff, $diffMine);
+		} else {
+			array_push($diff, array($diffMine[0], $diffMine[1], true));
+			array_push($diff, array($diffYours[0], $diffYours[1], true));
+		}
+	}
+	
+	// Return merged text, NULL if not possible
+	function getOutput($diff, $showDiff = false)
+	{
+		$output = "";
+		if(!$showDiff)
+		{
+			for($i=0; $i<count($diff); ++$i)
+			{
+				if($diff[$i][0] != YellowWebinterfaceMerge::Remove) $output .= $diff[$i][1];
+				$conflict |= $diff[$i][2];
+			}
+		} else {
+			for($i=0; $i<count($diff); ++$i)
+			{
+				$output .= $diff[$i][2] ? "! " : $diff[$i][0].' ';
+				$output .= $diff[$i][1];
+			}
+		}
+		return !$conflict ? $output : NULL;
 	}
 }
 

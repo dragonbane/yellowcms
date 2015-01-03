@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /harming/humans
-Disallow: /ignoring/human/orders
+Disallow: /harming/machines
 Disallow: /risking/own/existence
+Disallow: /edit/
